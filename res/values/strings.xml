@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+    <string name="app_name">Object Tracker</string>
+    <string name="value_base">000</string>
+    <string name="function_base">function</string>
+    <string name="description_base">description</string>
+    <string name="calibrate_string">Calibrate</string>
+</resources>
