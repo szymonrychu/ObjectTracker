@@ -68,7 +68,7 @@ public class Calibration extends CameraDrawerPreview{
 	private ArrayList<ObjectC> objects;
     void init(){
 		listener = null;
-    	mPatternSize = new Size(9, 6);
+    	mPatternSize = new Size(8, 5);
         mCorners = new MatOfPoint2f();
         mPatternWasFound = false;
         enabled = false;
@@ -143,8 +143,8 @@ public class Calibration extends CameraDrawerPreview{
 		        mRms = computeReprojectionErrors(objectPoints, rvecs, tvecs, reprojectionErrors);
 	        }
 	        if(listener!=null)listener.matrixComputed(distortionCoefficients, cameraMatrix);
+	        enabled=false;
 		}
-        enabled=false;
 		
 	}
 
@@ -155,8 +155,8 @@ public class Calibration extends CameraDrawerPreview{
     	mImageSize = new Size(width, height);
 		Camera.Size previewSize = params.getPreviewSize();
 		float ratio=1;
-		Log.v("Calibration","SetupCamera");
         for(Camera.Size size : params.getSupportedPreviewSizes()){
+        	Log.v("Size","w:"+size.width+":h:"+size.height);
         	float x = ((float)size.width/(float)w);
         	float y = ((float)size.height/(float)h);
         	if(Math.abs(x/y-1) < ratio){
@@ -166,6 +166,8 @@ public class Calibration extends CameraDrawerPreview{
         }
         params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);//"continuous-video");
         params.setPreviewSize(previewSize.width,previewSize.height);
+		Log.v("Preview","w:"+width+":h:"+height);
+		Log.v("Calibration","w:"+previewSize.width+":h:"+previewSize.height+":foc:"+Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
         setOnClickListener(new OnClickListener() {
 			
 			@Override

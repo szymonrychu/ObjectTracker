@@ -3,6 +3,7 @@ package org.object.tracker;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
@@ -42,7 +43,9 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	private int threads=0;
 	private int maxThreads=4;
 	private Camera.Parameters params;
-	
+	public Camera.Parameters getCameraParameters(){
+		return params;
+	}
 
 	
 	/**
@@ -63,6 +66,10 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	 * @param h
 	 */
 	public abstract void setupCamera(Camera.Parameters params, int w, int h);
+	
+	public void reloadCameraSetup(Camera.Parameters params ){
+		cameraView.reloadCameraSetup(params);
+	}
 	public abstract void draw(int w, int h,Canvas canvas);
 	
 	private Context context;
@@ -106,6 +113,7 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		private int width, height;
 		private SurfaceHolder surfaceHolder;
 		private CameraDrawerPreview par;
+		private Boolean run = false;
 		public CameraView(CameraDrawerPreview parent){
 			super(context);
 			this.par = parent;
@@ -117,9 +125,10 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		private int threads=0;
 		@Override
 		public void onPreviewFrame(byte[] data, Camera camera) {
-			yuvFrame = new Mat(height + height / 2, width, CvType.CV_8UC1);
+			Camera.Size size = camera.getParameters().getPreviewSize();
+			yuvFrame = new Mat(size.height + size.height / 2, size.width, CvType.CV_8UC1);
 			yuvFrame.put(0, 0, data);
-			if(threads<maxThreads){
+			if(maxThreads==-1 || threads<maxThreads){
 				
 				Thread thread = new Thread(){
 					public void run(){
@@ -156,6 +165,7 @@ abstract class CameraDrawerPreview extends ViewGroup{
 				e.printStackTrace();
 			}
 		}
+		Thread cameraPreview = new Thread(this);;
 		@Override
 		public void surfaceChanged(SurfaceHolder holder, int format, int width,
 				int height) {
@@ -165,8 +175,23 @@ abstract class CameraDrawerPreview extends ViewGroup{
 			setupCamera(params,width, height);
 			Log.d("setupCamera","CameraDrawerPreview");
 	        camera.setParameters(params);
-	        Thread cameraPreview = new Thread(this);
+	        run = true;
+	        cameraPreview = new Thread(this);;
 	        cameraPreview.start();
+		}
+
+		public void reloadCameraSetup(Camera.Parameters params ){
+			try {
+				run = false;
+				camera.stopPreview();
+				camera.setParameters(params);
+				run = true;
+				cameraPreview.join();
+				cameraPreview = new Thread(this);;
+				cameraPreview.start();
+			} catch (Exception e) {
+				Log.e("reload camera parameters","failed");
+			}
 		}
 		@Override
 		public void surfaceDestroyed(SurfaceHolder holder) {
@@ -179,8 +204,10 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		}
 		@Override
 		public void run() {
-			camera.setPreviewCallback(this);
-			camera.startPreview();
+			if(run){
+				camera.setPreviewCallback(this);
+				camera.startPreview();
+			}
 		}
 	}
 	private class DrawerView extends SurfaceView implements Callback, Runnable{
@@ -256,6 +283,36 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		for(int i=0;i<count;i++){
 			View child = getChildAt(i);
 			child.layout(l, t, r, b);
+			child.setSystemUiVisibility(
+		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+		            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
+		            | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
+		            | View.SYSTEM_UI_FLAG_IMMERSIVE);
+		}
+	}
+	void setImmersive(){
+		final int count = getChildCount();
+		for(int i=0;i<count;i++){
+			View child = getChildAt(i);
+			child.setSystemUiVisibility(
+		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+		            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
+		            | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
+		            | View.SYSTEM_UI_FLAG_IMMERSIVE);
+		}
+	}
+	void unSetImmersive(){
+		final int count = getChildCount();
+		for(int i=0;i<count;i++){
+			View child = getChildAt(i);
+			child.setSystemUiVisibility(
+		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
 		}
 	}
 	@Override
@@ -270,6 +327,9 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	}
 	public int getMaxThreads() {
 		return maxThreads;
+	}
+	public int getThreadsAlive(){
+		return threads;
 	}
 	public void setMaxThreads(int maxThreads) {
 		this.maxThreads = maxThreads;
