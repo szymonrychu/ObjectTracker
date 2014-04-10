@@ -1,9 +1,13 @@
 package org.object.tracker;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.object.tracker.CameraDrawerPreview.BitmapC;
+import org.object.tracker.CameraDrawerPreview.DebugDrawCallback;
 import org.object.tracker.CameraDrawerPreview.LineC;
 import org.object.tracker.CameraDrawerPreview.ObjectC;
 import org.object.tracker.CameraDrawerPreview.PointC;
@@ -50,6 +54,7 @@ public class Calibration extends CameraDrawerPreview{
 	public void setOnProcessChessboardListener(OnProcessChessboardListener listener){
 		this.listener = listener;
 	}
+	private DebugDrawCallback callback;
     private int mFlags;
     private Size mPatternSize;
     private MatOfPoint2f mCorners;
@@ -65,10 +70,10 @@ public class Calibration extends CameraDrawerPreview{
     private double mSquareSize;
 	private Context context;
 	private int height, width;
-	private ArrayList<ObjectC> objects;
+	
     void init(){
 		listener = null;
-    	mPatternSize = new Size(8, 5);
+    	mPatternSize = new Size(9, 6);
         mCorners = new MatOfPoint2f();
         mPatternWasFound = false;
         enabled = false;
@@ -78,6 +83,7 @@ public class Calibration extends CameraDrawerPreview{
         distortionCoefficients = new Mat();
         mIsCalibrated = false;
         mSquareSize = 0.0181;
+		this.callback = null;
         mFlags = Calib3d.CALIB_FIX_PRINCIPAL_POINT +
                 Calib3d.CALIB_ZERO_TANGENT_DIST +
                 Calib3d.CALIB_FIX_ASPECT_RATIO +
@@ -86,7 +92,7 @@ public class Calibration extends CameraDrawerPreview{
                 Calib3d.CALIB_CB_ADAPTIVE_THRESH +
                 Calib3d.CALIB_CB_NORMALIZE_IMAGE +
      	         Calib3d.CALIB_CB_FAST_CHECK;
-		objects = new ArrayList<CameraDrawerPreview.ObjectC>();
+		
     }
 	public Calibration(Context context, AttributeSet attrs) {
 		super(context, attrs);
@@ -108,8 +114,9 @@ public class Calibration extends CameraDrawerPreview{
 		return mIsCalibrated;
 	}
 	@Override
-	public void processImage(Mat yuvFrame) {
+	public List<ObjectC> processImage(Mat yuvFrame) {
 		Mat mRgba = new Mat();
+		List<ObjectC> objects = Collections.synchronizedList(new ArrayList<ObjectC>());
 		Imgproc.cvtColor( yuvFrame, mRgba, Imgproc.COLOR_YUV2RGBA_NV21, 4 );
 		mPatternWasFound = Calib3d.findChessboardCorners(mRgba, mPatternSize, mCorners, mFlags);
 		for(int cc=0;cc<mCorners.rows();cc++){
@@ -145,7 +152,7 @@ public class Calibration extends CameraDrawerPreview{
 	        if(listener!=null)listener.matrixComputed(distortionCoefficients, cameraMatrix);
 	        enabled=false;
 		}
-		
+		return objects;
 	}
 
 	@Override
@@ -221,22 +228,9 @@ public class Calibration extends CameraDrawerPreview{
 	
 
 	@Override
-	public void draw(int w, int h, Canvas canvas) {
-		if(objects.size()>0){
-			canvas.drawColor(0, Mode.CLEAR);
-			for(ObjectC obj : objects){
-				if(obj instanceof PointC){
-					canvas.drawPoint(((PointC)obj).x, ((PointC)obj).y, ((PointC)obj).paint);
-				}else if(obj instanceof LineC){
-					canvas.drawLine(((LineC)obj).x1, ((LineC)obj).y1, ((LineC)obj).x2, ((LineC)obj).y2, ((LineC)obj).paint);
-				}else if(obj instanceof TextC){
-					canvas.drawText(((TextC)obj).value, ((TextC)obj).x, ((TextC)obj).y, ((TextC)obj).paint);
-				}else if(obj instanceof BitmapC){
-					canvas.drawBitmap(((BitmapC)obj).bitmap,((BitmapC)obj).left,((BitmapC)obj).top,((BitmapC)obj).paint);
-				}
-			}
-			objects.clear();
-		}
+	public void debug(ArrayList<String> text) {
+		// TODO Auto-generated method stub
+		
 	}
 
 }

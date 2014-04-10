@@ -3,6 +3,7 @@ package org.object.tracker;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -10,6 +11,7 @@ import java.util.Queue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 
 import org.opencv.core.CvType;
@@ -18,6 +20,7 @@ import org.opencv.core.Mat;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff.Mode;
@@ -41,12 +44,23 @@ import android.widget.RelativeLayout;
 
 abstract class CameraDrawerPreview extends ViewGroup{
 	private int threads=0;
-	private int maxThreads=4;
+	private int maxThreads=1;
 	private Camera.Parameters params;
 	public Camera.Parameters getCameraParameters(){
 		return params;
 	}
 
+	interface DebugDrawCallback{
+		void debug(List<String> text);
+	}
+	public void setDebugDrawCallback(DebugDrawCallback debugDrawCallback){
+		this.callback = debugDrawCallback;
+	}
+	public void unSetDebugDrawCallback(){
+		this.callback = null;
+	}
+	
+	private DebugDrawCallback callback;
 	
 	/**
 	 * Method prepared for excessive image processing, called everytime,
@@ -56,7 +70,12 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	 * public custom objects.
 	 * @param yuvFrame
 	 */
-	public abstract void processImage(Mat yuvFrame);
+	public abstract List<ObjectC> processImage(Mat yuvFrame);
+	private LinkedBlockingQueue<List<ObjectC> > queue = new LinkedBlockingQueue<List<ObjectC>>();
+	private void process(Mat mYuv){
+		List<ObjectC> list = processImage(mYuv);
+		queue.add(list);
+	}
 	/**
 	 * Method thanks to which camera parameters could be overriden by ours.
 	 * The method is called every time, when camera's surface view is
@@ -67,10 +86,11 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	 */
 	public abstract void setupCamera(Camera.Parameters params, int w, int h);
 	
+	public abstract void debug(ArrayList<String> text);
+	
 	public void reloadCameraSetup(Camera.Parameters params ){
 		cameraView.reloadCameraSetup(params);
 	}
-	public abstract void draw(int w, int h,Canvas canvas);
 	
 	private Context context;
 	private Camera camera;
@@ -133,7 +153,7 @@ abstract class CameraDrawerPreview extends ViewGroup{
 				Thread thread = new Thread(){
 					public void run(){
 						threads++;
-						processImage(yuvFrame);
+						process(yuvFrame);
 						if(previousThread!=null){
 							while(previousThread.isAlive()){
 								try {
@@ -171,12 +191,21 @@ abstract class CameraDrawerPreview extends ViewGroup{
 				int height) {
 			this.height = height;
 			this.width = width;
+			run=false;
+			camera.stopPreview();
 			params = camera.getParameters();
 			setupCamera(params,width, height);
 			Log.d("setupCamera","CameraDrawerPreview");
 	        camera.setParameters(params);
 	        run = true;
-	        cameraPreview = new Thread(this);;
+/*
+			try {
+				cameraPreview.join();
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}*/
+	        cameraPreview = new Thread(this);
 	        cameraPreview.start();
 		}
 
@@ -240,21 +269,48 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		public synchronized void refresh(){
 			if(draw){
 				Canvas canvas=surfaceHolder.lockCanvas();
-				synchronized(canvas){
-					par.draw(width,height,canvas);
+				synchronized(canvas){canvas.drawColor(0, Mode.CLEAR);
+					synchronized(queue){
+						List<String> text = new ArrayList<String>();
+						List<ObjectC> objects = queue.poll();
+						text.add("objects:"+(objects==null? 0 : objects.size()/6));
+						if(objects!=null){
+							Iterator<ObjectC> iterator = objects.iterator();
+							while(iterator.hasNext()){
+								ObjectC obj = iterator.next();
+								if(obj instanceof PointC){
+									canvas.drawPoint(((PointC)obj).x, ((PointC)obj).y, ((PointC)obj).paint);
+								}else if(obj instanceof LineC){
+									canvas.drawLine(((LineC)obj).x1, ((LineC)obj).y1, ((LineC)obj).x2, ((LineC)obj).y2, ((LineC)obj).paint);
+								}else if(obj instanceof TextC){
+									canvas.drawText(((TextC)obj).value, ((TextC)obj).x, ((TextC)obj).y, ((TextC)obj).paint);
+								}else if(obj instanceof BitmapC){
+									canvas.drawBitmap(((BitmapC)obj).bitmap,((BitmapC)obj).left,((BitmapC)obj).top,((BitmapC)obj).paint);
+								}
+							}
+							objects.clear();
+						}
+					}
+					ArrayList<String> text = new ArrayList<String>();
+					debug(text);
+					if(callback!=null){
+						callback.debug(text);
+						Paint paint = new Paint();
+						paint.setColor(Color.RED);
+						paint.setTextSize(20);
+						int cc=0;
+						for(String t : text){
+							canvas.drawText(t, 50+20*cc, 50, paint);
+							cc++;
+						}
+					}
 					surfaceHolder.unlockCanvasAndPost(canvas);
 				}
 			}
 		}
 		@Override
 		public void run() {
-			if(draw){
-				Canvas canvas=surfaceHolder.lockCanvas();
-				synchronized(canvas){
-					par.draw(width,height,canvas);
-					surfaceHolder.unlockCanvasAndPost(canvas);
-				}
-			}
+			refresh();
 		}
 		
 	}
@@ -266,6 +322,7 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		LayoutParams params = new LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.MATCH_PARENT );
 		addView(drawerView,params);
 		addView(cameraView,params);
+		this.callback = null;
 	}
 	public CameraDrawerPreview(Context context, AttributeSet attrs) {
 		super(context, attrs);
@@ -283,38 +340,9 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		for(int i=0;i<count;i++){
 			View child = getChildAt(i);
 			child.layout(l, t, r, b);
-			child.setSystemUiVisibility(
-		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-		            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
-		            | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
-		            | View.SYSTEM_UI_FLAG_IMMERSIVE);
 		}
 	}
-	void setImmersive(){
-		final int count = getChildCount();
-		for(int i=0;i<count;i++){
-			View child = getChildAt(i);
-			child.setSystemUiVisibility(
-		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-		            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
-		            | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
-		            | View.SYSTEM_UI_FLAG_IMMERSIVE);
-		}
-	}
-	void unSetImmersive(){
-		final int count = getChildCount();
-		for(int i=0;i<count;i++){
-			View child = getChildAt(i);
-			child.setSystemUiVisibility(
-		            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-		            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-		            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
-		}
-	}
+	
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 		int w = MeasureSpec.makeMeasureSpec(widthMeasureSpec, MeasureSpec.EXACTLY);

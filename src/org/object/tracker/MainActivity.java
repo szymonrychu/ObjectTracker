@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import org.object.tracker.Calibration.OnProcessChessboardListener;
-import org.object.tracker.Preview.DebugDrawCallback;
+import org.object.tracker.CameraDrawerPreview.TextC;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
@@ -21,6 +21,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.hardware.Camera;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -62,18 +63,24 @@ public class MainActivity extends Activity {
 	    }
 		setContentView(R.layout.main);
 		mainView = getWindow().getDecorView();
-		mainView.setSystemUiVisibility(vis);
+    	Handler h = new Handler();
+    	h.postDelayed(new Runnable() {
+			public void run() {
+				mainView.setSystemUiVisibility(vis);
+			}
+		}, 2000);
 		mainView.setOnSystemUiVisibilityChangeListener(new OnSystemUiVisibilityChangeListener() {
             @Override
             public void onSystemUiVisibilityChange(int visibility) {
-            	try {
-					Thread.sleep(2000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+            	
                 if(visibility != vis) {
-                	mainView.setSystemUiVisibility(vis);
+                	Handler h = new Handler();
+                	h.postDelayed(new Runnable() {
+    					public void run() {
+    						mainView.setSystemUiVisibility(vis);
+    					}
+    				}, 2000);
+                	
                 }
             }
         });
@@ -97,11 +104,12 @@ public class MainActivity extends Activity {
 			});
 		}else{
 			preview = new Preview(this,cameraMatrix, distortionMatrix);
-			((Preview)preview).setDebugDrawCallback(new DebugDrawCallback() {
+			preview.setDebugDrawCallback(new org.object.tracker.CameraDrawerPreview.DebugDrawCallback() {
 				
 				@Override
 				public void debug(List<String> text) {
-					text.add("threads:"+(threadsNum!=-1 ? threadsNum : "inf"));
+					String val = "threads:"+(threadsNum!=-1 ? threadsNum : "inf");
+					text.add(val);
 				}
 			});
 			layout.addView(preview);
