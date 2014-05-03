@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
             System.loadLibrary("processing");
 	    }
 		setContentView(R.layout.main);
+		layout = (RelativeLayout)findViewById(R.id.main_layout);
 		mainView = getWindow().getDecorView();
     	Handler h = new Handler();
     	h.postDelayed(new Runnable() {
@@ -84,7 +85,6 @@ public class MainActivity extends Activity {
                 }
             }
         });
-		layout = (RelativeLayout)findViewById(R.id.main_layout);
 		Mat cameraMatrix = new Mat();
 		Mat distortionMatrix = new Mat();
 		if(!tryLoad(this, cameraMatrix, distortionMatrix)){
@@ -116,7 +116,19 @@ public class MainActivity extends Activity {
 			//preview.setImmersive();
 		}
 		threadsNum = preview.getMaxThreads();
-		
+		Button menuButton = new Button(this);
+		menuButton.setText("menu");
+		menuButton.setOnClickListener(new OnClickListener() {
+			
+			@Override
+			public void onClick(View v) {
+				openOptionsMenu();
+			}
+		});
+		layout.addView(menuButton);
+		RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams)menuButton.getLayoutParams();
+		params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+		menuButton.setLayoutParams(params);
 		super.onCreate(savedInstanceState);
 	}
 	public void saveResult(Mat cameraMatrix,Mat distortionCoefficients){
@@ -168,27 +180,11 @@ public class MainActivity extends Activity {
 		inflater.inflate(R.menu.main, menu);
 		return true;
 	}
+	
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch(item.getItemId()){
-		case R.id.calibration:
-			layout.removeView(preview);
-			//deleteSharedMatrixes();
-			preview = new Calibration(context);
-			layout.addView(preview);
-			//preview.setImmersive();
-			((Calibration)preview).setOnProcessChessboardListener(new OnProcessChessboardListener() {
-				
-				@Override
-				public void matrixComputed(Mat distortion, Mat camera) {
-					saveResult(camera, distortion);
-					layout.removeView(preview);
-					preview = new Preview(context,camera, distortion);
-					layout.addView(preview);
-					//preview.setImmersive();
-				}
-			});
-			break;
+		
 		case R.id.threads:
 			buildThreadsAlertDialog();
 			break;

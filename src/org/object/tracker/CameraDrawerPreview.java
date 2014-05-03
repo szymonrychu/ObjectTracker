@@ -46,6 +46,8 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	private int threads=0;
 	private int maxThreads=1;
 	private Camera.Parameters params;
+	private double scaleX=1;
+	private double scaleY=1;
 	public Camera.Parameters getCameraParameters(){
 		return params;
 	}
@@ -196,15 +198,11 @@ abstract class CameraDrawerPreview extends ViewGroup{
 			params = camera.getParameters();
 			setupCamera(params,width, height);
 			Log.d("setupCamera","CameraDrawerPreview");
+			Camera.Size s = params.getPreviewSize();
+			scaleY = this.height/s.height;
+			scaleX = this.width/s.width;
 	        camera.setParameters(params);
 	        run = true;
-/*
-			try {
-				cameraPreview.join();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}*/
 	        cameraPreview = new Thread(this);
 	        cameraPreview.start();
 		}
@@ -214,6 +212,9 @@ abstract class CameraDrawerPreview extends ViewGroup{
 				run = false;
 				camera.stopPreview();
 				camera.setParameters(params);
+				Camera.Size s = params.getPreviewSize();
+				scaleY = this.height/s.height;
+				scaleX = this.width/s.width;
 				run = true;
 				cameraPreview.join();
 				cameraPreview = new Thread(this);;
@@ -279,13 +280,23 @@ abstract class CameraDrawerPreview extends ViewGroup{
 							while(iterator.hasNext()){
 								ObjectC obj = iterator.next();
 								if(obj instanceof PointC){
-									canvas.drawPoint(((PointC)obj).x, ((PointC)obj).y, ((PointC)obj).paint);
+									int x = (int)(((PointC)obj).x*scaleX);
+									int y = (int)(((PointC)obj).y*scaleY);
+									canvas.drawPoint(x, y, ((PointC)obj).paint);
 								}else if(obj instanceof LineC){
-									canvas.drawLine(((LineC)obj).x1, ((LineC)obj).y1, ((LineC)obj).x2, ((LineC)obj).y2, ((LineC)obj).paint);
+									int x1 = (int)(((LineC)obj).x1*scaleX);
+									int y1 = (int)(((LineC)obj).y1*scaleY);
+									int x2 = (int)(((LineC)obj).x2*scaleX);
+									int y2 = (int)(((LineC)obj).y2*scaleY);
+									canvas.drawLine(x1 ,y1 ,x2 ,y2 , ((LineC)obj).paint);
 								}else if(obj instanceof TextC){
-									canvas.drawText(((TextC)obj).value, ((TextC)obj).x, ((TextC)obj).y, ((TextC)obj).paint);
+									int x = (int)(((TextC)obj).x*scaleX);
+									int y = (int)(((TextC)obj).y*scaleY);
+									canvas.drawText(((TextC)obj).value, x, y, ((TextC)obj).paint);
 								}else if(obj instanceof BitmapC){
-									canvas.drawBitmap(((BitmapC)obj).bitmap,((BitmapC)obj).left,((BitmapC)obj).top,((BitmapC)obj).paint);
+									int x = (int)(((BitmapC)obj).left*scaleX);
+									int y = (int)(((BitmapC)obj).top*scaleY);
+									canvas.drawBitmap(((BitmapC)obj).bitmap, x, y,((BitmapC)obj).paint);
 								}
 							}
 							objects.clear();
