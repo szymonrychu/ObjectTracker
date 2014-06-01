@@ -227,10 +227,4 @@ public class Calibration extends CameraDrawerPreview{
     }
 	
 
-	@Override
-	public void debug(ArrayList<String> text) {
-		// TODO Auto-generated method stub
-		
-	}
-
 }

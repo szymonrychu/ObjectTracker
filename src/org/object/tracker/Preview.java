@@ -2,6 +2,7 @@ package org.object.tracker;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
@@ -29,22 +30,26 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 public class Preview extends CameraDrawerPreview{
-	
+	public interface CenterPositions{
+		void pointWithCoords(int width, int height, HashMap<Integer, PointC> map);
+	}
 	private long pattDetAddrNtv;
 	private native long newPatternDetectorNtv(int adaptThreshC,int adaptThresBlockSize,
 			int normSize, long cameraMatrixAddr,long distortionMatrixAddr);
 	private native void delPatternDetectorNtv(long pattDetAddrNtv);
-	private native Object[] detectPatternDetectorArrNtv(long pattDetAddrNtv,long yuvFrameAddr);
+	private native Object[] detectPatternDetectorArrNtv(long pattDetAddrNtv,long yuvFrameAddr,double scaleX, double scaleY);
 	private Mat cameraMatrix;
 	private Mat distortionMatrix;
 	private ArrayList<Holder> holders ;
 	private LinkedBlockingQueue<List<ObjectC> > queue = new LinkedBlockingQueue<List<ObjectC>>();
+	private CenterPositions positions;
 	public Preview(Context context,Mat cameraMatrix, Mat distortionMatrix) {
 		super(context);
 		this.cameraMatrix = cameraMatrix;
 		this.distortionMatrix = distortionMatrix;
 		pattDetAddrNtv = newPatternDetectorNtv(5, 45, 25,
 				cameraMatrix.getNativeObjAddr(), distortionMatrix.getNativeObjAddr());
+		this.positions = null;
 		
 	}
 	public Preview(Context context) {
@@ -53,42 +58,50 @@ public class Preview extends CameraDrawerPreview{
 				cameraMatrix.getNativeObjAddr(), distortionMatrix.getNativeObjAddr());
 		
 	}
+	
 	public Preview(Context context,AttributeSet attr) {
 		super(context,attr);
 		pattDetAddrNtv = newPatternDetectorNtv(5, 45, 25,
 				cameraMatrix.getNativeObjAddr(), distortionMatrix.getNativeObjAddr());
 		
 	}
+	public void addCenterPositionsCallback(CenterPositions callback){
+		this.positions = callback;
+	}
 	void setupMatrixes(Mat cameraMatrix, Mat distortionMatrix){
 		this.cameraMatrix = cameraMatrix;
 		this.distortionMatrix = distortionMatrix;
 	}
+	private final int textSize=15;
+	HashMap<Integer, PointC> map;
 	@Override
 	public List<ObjectC> processImage(Mat yuvFrame) {
+		map = new HashMap<Integer, CameraDrawerPreview.PointC>();
 		List<ObjectC> objects = Collections.synchronizedList(new ArrayList<ObjectC>());//new ArrayList<CameraDrawerPreview.ObjectC>();
-		Object holders[] = detectPatternDetectorArrNtv(pattDetAddrNtv, yuvFrame.getNativeObjAddr());
+		Object holders[] = detectPatternDetectorArrNtv(pattDetAddrNtv, yuvFrame.getNativeObjAddr(),scaleX,scaleY);
 		if(holders!=null){
-			int top=0;
-			int left=0;
 			int hSize=holders.length;
 			for(int cc=0;cc<hSize;cc++){
-				Holder holder = (Holder)holders[cc];
-				int id= holder.id;
-				float x[] = holder.x;
-				float y[] = holder.y;
-				float XX=0;
-				float YY=0;
-				int length = x.length;
+				final Holder holder = (Holder)holders[cc];
+				final Mat homo = holder.homo;
+				final int id= holder.id;
+				final float x[] = holder.x;
+				final float y[] = holder.y;
+				final int length = x.length;
+				final float H = 360*cc/hSize;
+				final float hsv[] = {H,1.0f,1.0f};
+				final float cx = holder.cx;
+				final float cy = holder.cy;
+				PointC ppp = new PointC(cx,cy);
+				map.put(holder.id, ppp);
 				Paint paint = new Paint();
 				paint.setStrokeWidth(2);
-				float H = 360*cc/hSize;
-				float hsv[] = {H,1.0f,1.0f};
 				paint.setColor(Color.HSVToColor(hsv));
+				paint.setTextSize(textSize);
+				
 				for(int dd=0;dd<length;dd++){
 					LineC l = new LineC();
 					int scnd = (dd+1)%4;
-					XX+=x[dd];
-					YY+=y[dd];
 					l.x1=x[dd];
 					l.y1=y[dd];
 					l.x2=x[scnd];
@@ -96,29 +109,32 @@ public class Preview extends CameraDrawerPreview{
 					l.paint=paint;
 					objects.add(l);
 				}
-				paint.setTextSize(15);
-				TextC t = new TextC();
-				t.x=XX/length;
-				t.y=YY/length;
-				t.value=""+id;
-				t.paint = paint;
-				objects.add(t);
-				Mat mat = holder.tag;
-				Bitmap bmp = matToBitrmap(mat);
-				BitmapC bmpC = new BitmapC();
-				bmpC.bitmap=bmp;
-				bmpC.paint=paint;
-				bmpC.top=top;
-				bmpC.left=left;
-				if(top+mat.rows()>=400){
-					top=0;
-					left+=mat.cols();
-				}else{
-					top+=mat.rows();
+				TextC tID = new TextC();
+				tID.x=cx-(2*textSize)*3;
+				tID.y=cy-2*textSize;
+				tID.value=""+id;
+				tID.paint = paint;
+				objects.add(tID);
+				for(int row=0;row<homo.rows();row++){
+					for(int col=0;col<homo.cols();col++){
+						double[] data = new double[homo.channels()];
+						homo.get(row, col, data);
+						for(int ch=0;ch<homo.channels();ch++){
+							double d = data[ch];
+							TextC t = new TextC();
+							t.x=cx+(col*textSize-1*textSize)*3;
+							t.y=cy+row*textSize-1*textSize;
+							t.value=String.format("%+.2f",d);
+							t.paint = paint;
+							objects.add(t);
+						}
+					}
 				}
-				objects.add(bmpC);
 			}
 			
+		}
+		if(positions!=null){
+			positions.pointWithCoords(width, height, map);
 		}
 		return objects;
 		
@@ -165,9 +181,4 @@ public class Preview extends CameraDrawerPreview{
         catch (CvException e){Log.d("Exception",e.getMessage());}
         return bmp;
     }
-	@Override
-	public void debug(ArrayList<String> text) {
-		// TODO Auto-generated method stub
-		
-	}
 }

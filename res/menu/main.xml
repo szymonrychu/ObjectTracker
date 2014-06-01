@@ -3,5 +3,6 @@
     <item android:id="@+id/threads" android:title="Threads" android:enabled="true" android:titleCondensed="thrds" android:visible="true"></item>
     <item android:id="@+id/resolution" android:title="Resolution" android:enabled="true" android:titleCondensed="rsltn" android:visible="true"></item>
     <item android:id="@+id/targetfps" android:title="Target Fps" android:enabled="true" android:titleCondensed="fps" android:visible="true"></item>
+    <item android:id="@+id/debug" android:title="Debug Info" android:enabled="true" android:titleCondensed="debug" android:visible="true"></item>
 
 </menu>

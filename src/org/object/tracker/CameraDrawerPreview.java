@@ -1,7 +1,9 @@
 package org.object.tracker;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Currency;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -46,8 +48,10 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	private int threads=0;
 	private int maxThreads=1;
 	private Camera.Parameters params;
-	private double scaleX=1;
-	private double scaleY=1;
+	public double scaleX=1;
+	public double scaleY=1;
+	private Boolean debug=false;
+	protected int width, height;
 	public Camera.Parameters getCameraParameters(){
 		return params;
 	}
@@ -74,10 +78,7 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	 */
 	public abstract List<ObjectC> processImage(Mat yuvFrame);
 	private LinkedBlockingQueue<List<ObjectC> > queue = new LinkedBlockingQueue<List<ObjectC>>();
-	private void process(Mat mYuv){
-		List<ObjectC> list = processImage(mYuv);
-		queue.add(list);
-	}
+	
 	/**
 	 * Method thanks to which camera parameters could be overriden by ours.
 	 * The method is called every time, when camera's surface view is
@@ -88,7 +89,6 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	 */
 	public abstract void setupCamera(Camera.Parameters params, int w, int h);
 	
-	public abstract void debug(ArrayList<String> text);
 	
 	public void reloadCameraSetup(Camera.Parameters params ){
 		cameraView.reloadCameraSetup(params);
@@ -114,6 +114,11 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	public class PointC extends ObjectC{
 		public Paint paint;
 		public float x,y;
+		public PointC() {}
+		public PointC(float x,float y){
+			this.x=x;
+			this.y=y;
+		}
 	}
 	public class LineC extends ObjectC{
 		public Paint paint;
@@ -132,7 +137,6 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	private class CameraView extends SurfaceView implements Callback, PreviewCallback, Runnable{
 		
 		protected Mat yuvFrame;
-		private int width, height;
 		private SurfaceHolder surfaceHolder;
 		private CameraDrawerPreview par;
 		private Boolean run = false;
@@ -145,17 +149,20 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		}
 		private Thread previousThread;
 		private int threads=0;
+		private int currentThreads=0;
+		private long delay=0;
 		@Override
 		public void onPreviewFrame(byte[] data, Camera camera) {
 			Camera.Size size = camera.getParameters().getPreviewSize();
 			yuvFrame = new Mat(size.height + size.height / 2, size.width, CvType.CV_8UC1);
 			yuvFrame.put(0, 0, data);
-			if(maxThreads==-1 || threads<maxThreads){
+			if(maxThreads==-1 || threads<=maxThreads){
 				
 				Thread thread = new Thread(){
 					public void run(){
 						threads++;
-						process(yuvFrame);
+						List<ObjectC> list = processImage(yuvFrame);
+						queue.add(list);
 						if(previousThread!=null){
 							while(previousThread.isAlive()){
 								try {
@@ -189,18 +196,18 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		}
 		Thread cameraPreview = new Thread(this);;
 		@Override
-		public void surfaceChanged(SurfaceHolder holder, int format, int width,
-				int height) {
-			this.height = height;
-			this.width = width;
+		public void surfaceChanged(SurfaceHolder holder, int format, int w,
+				int h) {
+			height = h;
+			width = w;
 			run=false;
 			camera.stopPreview();
 			params = camera.getParameters();
 			setupCamera(params,width, height);
 			Log.d("setupCamera","CameraDrawerPreview");
 			Camera.Size s = params.getPreviewSize();
-			scaleY = this.height/s.height;
-			scaleX = this.width/s.width;
+			scaleY = (double)height/s.height;
+			scaleX = (double)width/s.width;
 	        camera.setParameters(params);
 	        run = true;
 	        cameraPreview = new Thread(this);
@@ -213,11 +220,11 @@ abstract class CameraDrawerPreview extends ViewGroup{
 				camera.stopPreview();
 				camera.setParameters(params);
 				Camera.Size s = params.getPreviewSize();
-				scaleY = this.height/s.height;
-				scaleX = this.width/s.width;
+				scaleY = (double)height/s.height;
+				scaleX = (double)width/s.width;
 				run = true;
 				cameraPreview.join();
-				cameraPreview = new Thread(this);;
+				cameraPreview = new Thread(this);
 				cameraPreview.start();
 			} catch (Exception e) {
 				Log.e("reload camera parameters","failed");
@@ -267,11 +274,14 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		public void surfaceDestroyed(SurfaceHolder holder) {
 			draw = false;
 		}
+		long lastFpsTime = 0;
 		public synchronized void refresh(){
 			if(draw){
 				Canvas canvas=surfaceHolder.lockCanvas();
-				synchronized(canvas){canvas.drawColor(0, Mode.CLEAR);
+				synchronized(canvas){
+					canvas.drawColor(0, Mode.CLEAR);
 					synchronized(queue){
+						
 						List<String> text = new ArrayList<String>();
 						List<ObjectC> objects = queue.poll();
 						text.add("objects:"+(objects==null? 0 : objects.size()/6));
@@ -280,38 +290,47 @@ abstract class CameraDrawerPreview extends ViewGroup{
 							while(iterator.hasNext()){
 								ObjectC obj = iterator.next();
 								if(obj instanceof PointC){
-									int x = (int)(((PointC)obj).x*scaleX);
-									int y = (int)(((PointC)obj).y*scaleY);
+									int x = (int)(((PointC)obj).x);
+									int y = (int)(((PointC)obj).y);
 									canvas.drawPoint(x, y, ((PointC)obj).paint);
 								}else if(obj instanceof LineC){
-									int x1 = (int)(((LineC)obj).x1*scaleX);
-									int y1 = (int)(((LineC)obj).y1*scaleY);
-									int x2 = (int)(((LineC)obj).x2*scaleX);
-									int y2 = (int)(((LineC)obj).y2*scaleY);
+									int x1 = (int)(((LineC)obj).x1);
+									int y1 = (int)(((LineC)obj).y1);
+									int x2 = (int)(((LineC)obj).x2);
+									int y2 = (int)(((LineC)obj).y2);
 									canvas.drawLine(x1 ,y1 ,x2 ,y2 , ((LineC)obj).paint);
 								}else if(obj instanceof TextC){
-									int x = (int)(((TextC)obj).x*scaleX);
-									int y = (int)(((TextC)obj).y*scaleY);
+									int x = (int)(((TextC)obj).x);
+									int y = (int)(((TextC)obj).y);
 									canvas.drawText(((TextC)obj).value, x, y, ((TextC)obj).paint);
 								}else if(obj instanceof BitmapC){
-									int x = (int)(((BitmapC)obj).left*scaleX);
-									int y = (int)(((BitmapC)obj).top*scaleY);
+									int x = (int)(((BitmapC)obj).left);
+									int y = (int)(((BitmapC)obj).top);
 									canvas.drawBitmap(((BitmapC)obj).bitmap, x, y,((BitmapC)obj).paint);
 								}
 							}
 							objects.clear();
 						}
 					}
-					ArrayList<String> text = new ArrayList<String>();
-					debug(text);
-					if(callback!=null){
-						callback.debug(text);
+					if(debug){
+						ArrayList<String> text = new ArrayList<String>();
+						if(callback!=null){
+							callback.debug(text);
+						}
+						text.add("scale x="+scaleX);
+						text.add("scale y="+scaleY);
+						long now = System.currentTimeMillis();
+						int delay = (int)(now - lastFpsTime);
+						lastFpsTime = now;
+						double FPS=(1.0d/delay)*1000;
+						text.add("fps="+FPS);
+						text.add("delay="+delay+"ms");
 						Paint paint = new Paint();
 						paint.setColor(Color.RED);
-						paint.setTextSize(20);
+						paint.setTextSize(40);
 						int cc=0;
 						for(String t : text){
-							canvas.drawText(t, 50+20*cc, 50, paint);
+							canvas.drawText(t, 40, 40+40*cc, paint);
 							cc++;
 						}
 					}
@@ -335,6 +354,39 @@ abstract class CameraDrawerPreview extends ViewGroup{
 		addView(cameraView,params);
 		this.callback = null;
 	}
+	private float readUsage() {
+	    try {
+	        RandomAccessFile reader = new RandomAccessFile("/proc/stat", "r");
+	        String load = reader.readLine();
+
+	        String[] toks = load.split(" ");
+
+	        long idle1 = Long.parseLong(toks[5]);
+	        long cpu1 = Long.parseLong(toks[2]) + Long.parseLong(toks[3]) + Long.parseLong(toks[4])
+	              + Long.parseLong(toks[6]) + Long.parseLong(toks[7]) + Long.parseLong(toks[8]);
+
+	        try {
+	            Thread.sleep(360);
+	        } catch (Exception e) {}
+
+	        reader.seek(0);
+	        load = reader.readLine();
+	        reader.close();
+
+	        toks = load.split(" ");
+
+	        long idle2 = Long.parseLong(toks[5]);
+	        long cpu2 = Long.parseLong(toks[2]) + Long.parseLong(toks[3]) + Long.parseLong(toks[4])
+	            + Long.parseLong(toks[6]) + Long.parseLong(toks[7]) + Long.parseLong(toks[8]);
+
+	        return (float)(cpu2 - cpu1) / ((cpu2 + idle2) - (cpu1 + idle1));
+
+	    } catch (IOException ex) {
+	        ex.printStackTrace();
+	    }
+
+	    return 0;
+	} 
 	public CameraDrawerPreview(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		this.context = context;
@@ -372,5 +424,11 @@ abstract class CameraDrawerPreview extends ViewGroup{
 	}
 	public void setMaxThreads(int maxThreads) {
 		this.maxThreads = maxThreads;
+	}
+	public void setDebug(Boolean enabled){
+		debug=enabled;
+	}
+	public Boolean getDebug(){
+		return debug;
 	}
 }

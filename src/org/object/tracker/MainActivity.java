@@ -5,7 +5,9 @@ import java.util.HashMap;
 import java.util.List;
 
 import org.object.tracker.Calibration.OnProcessChessboardListener;
+import org.object.tracker.CameraDrawerPreview.PointC;
 import org.object.tracker.CameraDrawerPreview.TextC;
+import org.object.tracker.communication.Communication;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
@@ -42,16 +44,18 @@ public class MainActivity extends Activity {
 	private Context context;
 	private int threadsNum;
 	Boolean freedable = false;
+	Communication driver;
 	public MainActivity() {
 		this.context = this;
 	}
 	private View mainView;
-	int vis = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+	final int vis = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            //| View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
-            | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
-            | View.SYSTEM_UI_FLAG_IMMERSIVE;
+            //| View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // hide nav bar
+            //| View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
+            //| View.SYSTEM_UI_FLAG_IMMERSIVE
+            ;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -112,6 +116,47 @@ public class MainActivity extends Activity {
 					text.add(val);
 				}
 			});
+			((Preview)preview).addCenterPositionsCallback(new Preview.CenterPositions() {
+				float left=0.0f;
+				float right=0.0f;
+				class Center{
+					int x;
+					int y;
+					public Center(int w,int h) {
+						x=w/2;
+						y=h/2;
+					}
+				}
+				void driver(PointC p,Center c){
+					float rx = p.x-c.x;
+					float ry = p.y-c.y;
+					if(100 < (rx>0? rx : -rx)){
+						right = 1.0f;
+						left = 1.0f;
+						return;
+					}
+					if(p.x>c.x){
+						right=(p.x-c.x)/(c.x);
+						left=0.0f;
+					}else{
+						left=(c.x-p.x)/(c.x);
+						right=0.0f;
+					}
+				}
+				@Override
+				public void pointWithCoords(int width, int height, HashMap<Integer,PointC> map) {
+					if(map.size()>0){
+						Center c = new Center(width, height);
+						if(map.containsKey(3)){
+							PointC point = map.get(3);
+							
+							driver(point,c);
+							driver.steer(left,right);
+						}
+					}
+					
+				}
+			});
 			layout.addView(preview);
 			//preview.setImmersive();
 		}
@@ -129,6 +174,7 @@ public class MainActivity extends Activity {
 		RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams)menuButton.getLayoutParams();
 		params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
 		menuButton.setLayoutParams(params);
+		driver = new Communication(context);
 		super.onCreate(savedInstanceState);
 	}
 	public void saveResult(Mat cameraMatrix,Mat distortionCoefficients){
@@ -193,6 +239,9 @@ public class MainActivity extends Activity {
 			break;
 		case R.id.targetfps:
 			buildFpsAlertDialog();
+			break;
+		case R.id.debug:
+			preview.setDebug(preview.getDebug() ? false : true);
 			break;
 		default:
 			mainView.setSystemUiVisibility(vis);
