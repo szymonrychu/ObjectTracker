@@ -102,7 +102,7 @@
 		<link>
 			<name>include</name>
 			<type>2</type>
-			<location>C:/Users/szymonri/DevTools/OpenCV-2.4.8-android-sdk/OpenCV-2.4.8-android-sdk/sdk/native/jni/include</location>
+			<location>/home/szymon/Desktop/android-sdk/C::/Users/szymonri/DevTools/OpenCV-2.4.8-android-sdk/OpenCV-2.4.8-android-sdk/sdk/native/jni/include</location>
 		</link>
 	</linkedResources>
 </projectDescription>
